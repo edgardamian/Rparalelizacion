@@ -1,0 +1,75 @@
+data(iris)
+knitr::kable(head(iris))
+
+library(parallel)
+numCores <- detectCores()
+numCores
+# Hacemos una dataframe vacia para guardar los resultados
+results <- data.frame()
+
+######### correr un modelo lineal 2000 veces, haciendo una extracción de 100 filas de la base de datos original
+system.time({
+  for (i in 1:20000) {
+    # Saco una muestra de 100 numeros entre 1 y 150
+    ind <- sample(1:nrow(iris), size = 100)
+    iris_sample <- iris[ind, ]
+    # Hago un lm con el petalo y el sepalo
+    model1 <- lm(iris_sample[, "Sepal.Length"] ~ iris_sample[, "Petal.Length"])
+    
+    # Extraigo el R2 y los coeficientes
+    R2 <- summary(model1)$r.squared
+    coef <- coefficients(model1)
+    # lo junto todo en la data.frame de resultados
+    results <- rbind(results, c(R2, coef))
+  }
+})
+
+results
+
+############### creando una funcion que corra los modelos
+lm_boot_fun <- function(iter) {
+  ind <- sample(1:nrow(iris), size = 100)
+  iris_sample <- iris[ind, ]
+  model1 <- lm(iris_sample[, "Sepal.Length"] ~ iris_sample[, "Petal.Length"])
+  R2 <- summary(model1)$r.squared
+  coef <- coefficients(model1)
+  # Creo un vector con los resultados
+  results <- c("R2" = R2, coef)
+  # El output de mi función
+  return(results)
+}
+
+lm_boot_fun(1:20000)
+
+################### usar la funcion laplay para ejecutar la función sobre el vector iter
+iter <- seq(1, 20000)
+system.time({
+  results <- lapply(iter, lm_boot_fun)
+})
+
+head(results, n = 3)
+
+###transformar la lista producto de lapply a un data frame
+
+results <- data.frame(matrix(unlist(results), ncol = 3, byrow = T))
+head(results)
+
+################## PARALELIZANDO ##############################################
+
+library(parallel)
+numCores <- detectCores()
+numCores
+
+######## en linux se puede usar mclapply
+
+iter <- seq(1, 20000)
+system.time({
+  results <- mclapply(iter, lm_boot_fun, mc.cores = 7)
+})
+
+#################### en windows podemos usar la funcion parLapply con la mitad de los nucleso que tengamos
+cl <- makeCluster(2) # Hacemos el cluster
+system.time(
+  results <- parLapply(cl, iter, lm_boot_fun)
+)
+stopCluster(cl) # Cerramos el cluster, NO OLVIDAR
